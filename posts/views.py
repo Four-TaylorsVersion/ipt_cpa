@@ -1,84 +1,141 @@
-import json
-from django.db import connection
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from .models import User, Post
+from django.db import connection  # For resetting ID sequences or direct database operations
+from rest_framework.decorators import api_view  # For defining DRF API views
+from rest_framework.views import APIView  # For defining DRF API views
+from rest_framework.generics import RetrieveAPIView  # For defining DRF API views
+from rest_framework import status  # For HTTP status codes
+from rest_framework.response import Response
+from posts.serializers import CommentSerializer, PostSerializer, UserSerializer  # DRF's Response object for API responses
+from .models import User, Post, Comment  # Importing models for queries and serializers
 
 
 # User Views
+@api_view(['GET'])
 def get_users(request):
-   # Retrive details
    try:
-       users = list(User.objects.values('id', 'username', 'email', 'created_at'))
-       return JsonResponse(users, safe=False)
+       users = User.objects.all()
+       serializer = UserSerializer(users, many=True)  # Serialize multiple users
+       return Response(serializer.data)
    except Exception as e:
-       return JsonResponse({'error': str(e)}, status=500)
+       return Response({'error': str(e)}, status=500)
   
-@csrf_exempt
+@api_view(['POST'])
 def create_user(request):
-   if request.method == 'POST':
-       try:
-           data = json.loads(request.body)
-           user = User.objects.create(username=data['username'], email=data['email'])
-           return JsonResponse({'id': user.id, 'message': 'User created successfully'}, status=201)
-       except Exception as e:
-           return JsonResponse({'error': str(e)}, status=400)
-   else:
-       return JsonResponse({'error': 'GET method not allowed on this endpoint.'}, status=405)
-
-
-# Post Views
-def get_posts(request):
-  # Retrieve all posts with their details.
    try:
-       posts = list(Post.objects.values('id', 'content', 'author', 'created_at'))
-       return JsonResponse(posts, safe=False)
+       serializer = UserSerializer(data=request.data)
+       if serializer.is_valid():
+           serializer.save()
+           return Response({'id': serializer.instance.id, 'message': 'User created successfully'}, status=201)
+       return Response(serializer.errors, status=400)
    except Exception as e:
-       return JsonResponse({'error': str(e)}, status=500)
+       return Response({'error': str(e)}, status=500)
 
 
-@csrf_exempt
+@api_view(['GET'])
+def get_posts(request):
+   try:
+       posts = Post.objects.all()
+       serializer = PostSerializer(posts, many=True)
+       return Response(serializer.data)
+   except Exception as e:
+       return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
 def create_post(request):
-   # Create a new post.
-   if request.method == 'POST':
-       try:
-           data = json.loads(request.body)
-           author = User.objects.get(id=data['author'])
-           post = Post.objects.create(content=data['content'], author=author)
-           return JsonResponse({'id': post.id, 'message': 'Post created successfully'}, status=201)
-       except User.DoesNotExist:
-           return JsonResponse({'error': 'Author not found'}, status=404)
-       except Exception as e:
-           return JsonResponse({'error': str(e)}, status=400)
+   try:
+       serializer = PostSerializer(data=request.data)
+       if serializer.is_valid():
+           serializer.save()
+           return Response({'id': serializer.instance.id, 'message': 'Post created successfully'}, status=201)
+       return Response(serializer.errors, status=400)
+   except Exception as e:
+       return Response({'error': str(e)}, status=500)
       
-@csrf_exempt
+@api_view(['DELETE'])
 def delete_user(request, user_id):
-   if request.method == 'DELETE':
-       try:
-           user = User.objects.get(id=user_id)  # Get the user by ID
-           user.delete()  # Delete the user from the database
-           return JsonResponse({'message': 'User deleted successfully'}, status=204)
-       except User.DoesNotExist:
-           return JsonResponse({'error': 'User not found'}, status=404)
-   else:
-       return JsonResponse({'error': 'Method not allowed'}, status=405)
+   try:
+       user = User.objects.get(id=user_id)
+       user.delete()
+       return Response({'message': 'User deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+   except User.DoesNotExist:
+       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+   except Exception as e:
+       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
   
-@csrf_exempt
+@api_view(['POST'])
 def reset_user_id(request):
    try:
        with connection.cursor() as cursor:
-           # For SQLite
            cursor.execute("DELETE FROM sqlite_sequence WHERE name='yourapp_user';")
-
-
-           # For PostgreSQL
-           # cursor.execute("SELECT setval(pg_get_serial_sequence('yourapp_user', 'id'), 1, false);")
-
-
-           # For MySQL
-           # cursor.execute("ALTER TABLE yourapp_user AUTO_INCREMENT = 1;")
-
-
-       return JsonResponse({'message': 'User ID sequence reset successfully'}, status=200)
+       return Response({'message': 'User ID sequence reset successfully'}, status=200)
    except Exception as e:
-       return JsonResponse({'error': str(e)}, status=400)
+       return Response({'error': str(e)}, status=500)
+  
+class AddCommentView(APIView):
+   def post(self, request, *args, **kwargs):
+       serializer = CommentSerializer(data=request.data)
+       if serializer.is_valid():
+           serializer.save()
+           return Response(serializer.data, status=status.HTTP_201_CREATED)
+       return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+  
+class PostDetailView(RetrieveAPIView):
+   queryset = Post.objects.all()
+   serializer_class = PostSerializer
+
+
+class UserListCreate(APIView):
+   def get(self, request):
+       users = User.objects.all()
+       serializer = UserSerializer(users, many=True)
+       return Response(serializer.data)
+
+
+
+
+   def post(self, request):
+       serializer = UserSerializer(data=request.data)
+       if serializer.is_valid():
+           serializer.save()
+           return Response(serializer.data, status=status.HTTP_201_CREATED)
+       return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+class PostListCreate(APIView):
+   def get(self, request):
+       posts = Post.objects.all()
+       serializer = PostSerializer(posts, many=True)
+       return Response(serializer.data)
+
+
+
+
+   def post(self, request):
+       serializer = PostSerializer(data=request.data)
+       if serializer.is_valid():
+           serializer.save()
+           return Response(serializer.data, status=status.HTTP_201_CREATED)
+       return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+class CommentListCreate(APIView):
+   def get(self, request):
+       comments = Comment.objects.all()
+       serializer = CommentSerializer(comments, many=True)
+       return Response(serializer.data)
+
+
+
+
+   def post(self, request):
+       serializer = CommentSerializer(data=request.data)
+       if serializer.is_valid():
+           serializer.save()
+           return Response(serializer.data, status=status.HTTP_201_CREATED)
+       return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
