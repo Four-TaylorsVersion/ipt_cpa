@@ -6,6 +6,18 @@ from rest_framework import status  # For HTTP status codes
 from rest_framework.response import Response
 from posts.serializers import CommentSerializer, PostSerializer, UserSerializer  # DRF's Response object for API responses
 from .models import User, Post, Comment  # Importing models for queries and serializers
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import Group, User
+from rest_framework.permissions import IsAuthenticated
+from .permissions import IsPostAuthor
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import serializers
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from factories.post_factory import PostFactory
 
 
 # User Views
@@ -28,6 +40,16 @@ def create_user(request):
        return Response(serializer.errors, status=400)
    except Exception as e:
        return Response({'error': str(e)}, status=500)
+user = User.objects.create_user(username="new_user", password="secure_pass123")
+print(user.password)  # Outputs a hashed password
+user = authenticate(username="new_user", password="secure_pass123")
+if user is not None:
+    print("Authentication successful!")
+else:
+    print("Invalid credentials.")
+admin_group = Group.objects.create(name="Admin")
+user = User.objects.get(username="admin_user")
+user.groups.add(admin_group)
 
 
 @api_view(['GET'])
@@ -138,4 +160,38 @@ class CommentListCreate(APIView):
            return Response(serializer.data, status=status.HTTP_201_CREATED)
        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class PostDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsPostAuthor]
 
+
+    def get(self, request, pk):
+        post = Post.objects.get(pk=pk)
+        self.check_object_permissions(request, post)
+        return Response({"content": post.content})
+
+class ProtectedView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+
+    def get(self, request):
+        return Response({"message": "Authenticated!"})
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['username', 'email']  # Exclude sensitive fields like password
+
+class CreatePostView(APIView):
+    def post(self, request):
+        data = request.data
+        try:
+            post = PostFactory.create_post(
+                post_type=data['post_type'],
+                title=data['title'],
+                content=data.get('content', ''),
+                metadata=data.get('metadata', {})
+            )
+            return Response({'message': 'Post created successfully!', 'post_id': post.id}, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
