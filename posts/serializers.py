@@ -18,11 +18,11 @@ class UserSerializer(serializers.ModelSerializer):
       
 class PostSerializer(serializers.ModelSerializer):
    comments = serializers.StringRelatedField(many=True, read_only=True)  # Nested serializer for comments
-
+   likes = serializers.StringRelatedField(many=True, read_only=True) 
 
    class Meta:
        model = Post
-       fields = ['id', 'title', 'content', 'author', 'created_at', 'comments']
+       fields = ['id', 'title', 'content', 'author', 'created_at', 'comments', 'likes']
 
 class CommentSerializer(serializers.ModelSerializer):
     class Meta:

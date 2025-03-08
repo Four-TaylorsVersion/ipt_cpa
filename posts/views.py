@@ -20,6 +20,8 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import serializers
 from singletons.logger_singleton import LoggerSingleton
+from rest_framework.generics import RetrieveAPIView, ListAPIView
+from rest_framework.pagination import PageNumberPagination
 
 logger = LoggerSingleton().get_logger()
 
@@ -239,3 +241,27 @@ def add_comment(request, post_id):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+def get_comments(request, post_id):
+    try:
+        post = Post.objects.get(id=post_id)
+    except Post.DoesNotExist:
+        return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    comments = Comment.objects.filter(post=post)
+    serializer = CommentSerializer(comments, many=True)
+    return Response(serializer.data)
+
+
+class FeedPagination(PageNumberPagination):
+    page_size = 3
+
+class FeedView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = PostSerializer
+    pagination_class = FeedPagination
+
+    def get_queryset(self):
+        # Retrieve posts sorted by newest first
+        return Post.objects.all().order_by('-created_at')
